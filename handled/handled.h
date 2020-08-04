@@ -7,7 +7,6 @@ TODO:
  - figure out what to do about "exception" cases (probably don't actually use exceptions)
  - figure out operator overloading
     - new/delete for Handled? (instead of create()/destroy())
-    - dereference for Handle?
  - optional (#if DEBUG?) logging
     - total count of all objects created/destroyed
     - additional (past 0) Pages allocated
@@ -89,7 +88,7 @@ struct Handled {
             Page* current_page = get_page_from_id(id);
             if (current_page == nullptr) return nullptr; // EXCEPTION;
             T* t = &(current_page->memory[id]);
-            if (t->handler.gen != handle->gen) return nullptr; // EXCEPTION
+            if (t->handle.gen != handle->gen) return nullptr; // EXCEPTION
             return t;
         }
         void deactivate(size_t id) {
@@ -139,7 +138,7 @@ struct Handled {
         Handle() : id(0), gen(0), handler(nullptr) {}
         Handle(size_t id, size_t gen, Handler* handler) : id(id), gen(gen), handler(handler) {}
         Handle(const Handle& handle) : id(handle.id), gen(handle.gen), handler(handle.handler) {}
-        inline bool is_valid() { return handler != nullptr; /* TODO */ }
+        inline bool is_valid() { return handler != nullptr && handler->get_from_handle(this)->is_valid(); }
         Handle& operator=(const Handle& other) {
             if (&other == this) return *this;
             id = other.id;
@@ -149,7 +148,8 @@ struct Handled {
         bool operator==(const Handle& other) {
             return id == other.id && gen == other.gen && handler == other.handler;
         }
-        T* operator*() {
+        T* operator->() {
+            if (!is_valid()) return nullptr;
             return handler->get_from_handle(this);
         }
     };

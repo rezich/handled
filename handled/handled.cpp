@@ -4,16 +4,16 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-#define PAGE_SIZE 3
-
 namespace handled
 {
+	constexpr auto PAGE_SIZE = 3; // must be at least 3
+
 	struct Foo : Handled<Foo, PAGE_SIZE> {
 		static inline int iteration = 0;
 		static void reset_iteration() {
 			iteration = 0;
 		}
-		int i = 0;
+		int bar = 0;
 		void without_arg() {
 			++iteration;
 			Logger::WriteMessage("Iterating #");
@@ -110,6 +110,23 @@ namespace handled
 			Assert::IsFalse(Foo::handler->page.is_full); // page should NOT be full since we just cleaned up destroying obj
 			Foo::create();
 			Assert::IsTrue(Foo::handler->page.is_full); // page should be full once again
+		}
+
+		TEST_METHOD(Handle) {
+			Foo::setup();
+			Foo::create();
+			Foo::Handle my_foo = Foo::create()->handle;
+			Foo::create();
+			my_foo->bar = 10;
+			Assert::AreEqual(10, Foo::handler->page.memory[1].bar);
+		}
+
+		TEST_METHOD(HandleUseAfterDestroy) {
+
+		}
+
+		TEST_METHOD(HandleUseAfterDestroyAndCleanup) {
+
 		}
 	};
 }
