@@ -3,10 +3,7 @@
 /*
 TODO:
  - check all previous functionality works
- - check that adding pages works
  - allow for sorting vacancies (?)
- - change destroying to only mark as destroying
- - add cleanup function to finalize destruction of all destroying objects
  - figure out what to do about "exception" cases (probably don't actually use exceptions)
  - figure out operator overloading
     - new/delete for Handled? (instead of create()/destroy())
@@ -31,6 +28,7 @@ struct Handled {
                 if (!is_full) ++vacancy_index;
                 is_full = false;
                 memory[index].active = false;
+                memory[index].destroying = false;
                 vacancies[vacancy_index] = index;
             }
             inline size_t vacancy_pop() {
@@ -46,6 +44,7 @@ struct Handled {
                 for (size_t i = 0; i < COUNT; ++i) {
                     T* slot = &memory[i];
                     slot->active = false;
+                    slot->destroying = false;
                     vacancies[index--] = i;
                 }
                 vacancy_index = COUNT - 1;
@@ -64,13 +63,13 @@ struct Handled {
             while (current_page->is_full) {
                 ++page_count;
                 current_page->page_next = new Page(current_page->index + 1);
-                // TODO
                 current_page = current_page->page_next;
                 page_last = current_page;
             }
             size_t vacancy = current_page->vacancy_pop();
             T* next = &(current_page->memory[vacancy]);
             next->active = true;
+            next->destroying = false;
             next->handle.id = current_page->index * COUNT + vacancy;
             next->handle.gen = gen_next++;
             next->handle.handler = this;
@@ -103,7 +102,7 @@ struct Handled {
             while (current_page != nullptr) {
                 T* current_item = current_page->memory;
                 while (current_item < current_page->memory + COUNT) {
-                    if (current_item->active) (current_item->*method)();
+                    if (current_item->is_valid()) (current_item->*method)();
                     ++current_item;
                 }
                 current_page = current_page->page_next;
@@ -115,7 +114,18 @@ struct Handled {
             while (current_page != nullptr) {
                 T* current_item = current_page->memory;
                 while (current_item < current_page->memory + COUNT) {
-                    if (current_item->active) (current_item->*method)(ptr);
+                    if (current_item->is_valid()) (current_item->*method)(ptr);
+                    ++current_item;
+                }
+                current_page = current_page->page_next;
+            }
+        }
+        void cleanup() {
+            Page* current_page = &page;
+            while (current_page != nullptr) {
+                T* current_item = current_page->memory;
+                while (current_item < current_page->memory + COUNT) {
+                    if (current_item->destroying) deactivate(current_item->handle.id);
                     ++current_item;
                 }
                 current_page = current_page->page_next;
@@ -144,6 +154,7 @@ struct Handled {
         }
     };
     bool active = true;
+    bool destroying = false;
     Handle handle;
     static inline Handler* handler = nullptr;
     static inline void setup() {
@@ -154,9 +165,8 @@ struct Handled {
         return handler->next();
     }
     void destroy() {
-        if (!active) return; // EXCEPTION
-        active = false;
-        handler->deactivate(handle.id);
+        if (!active || destroying) return; // exception/warning?
+        destroying = true;
     }
     static inline void iterate(void (T::* method)()) {
         handler->iterate(method);
@@ -164,5 +174,11 @@ struct Handled {
     template < typename U >
     static inline void iterate(void (T::* method)(U*), U* ptr) {
         handler->iterate(method, ptr);
+    }
+    static inline void cleanup() {
+        handler->cleanup();
+    }
+    inline bool is_valid() {
+        return active && !destroying;
     }
 };

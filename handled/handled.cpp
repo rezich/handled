@@ -4,9 +4,10 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
+#define PAGE_SIZE 3
+
 namespace handled
 {
-#define PAGE_SIZE 3
 	struct Foo : Handled<Foo, PAGE_SIZE> {
 		static inline int iteration = 0;
 		static void reset_iteration() {
@@ -15,12 +16,17 @@ namespace handled
 		int i = 0;
 		void without_arg() {
 			++iteration;
-			Logger::WriteMessage("Iterating without arg ");
+			Logger::WriteMessage("Iterating #");
 			Logger::WriteMessage(std::to_string(handle.id).c_str());
-			Logger::WriteMessage("\n");
+			Logger::WriteMessage(" without arg\n");
 		}
 		void with_arg(int* arg) {
 			iteration += *arg;
+			Logger::WriteMessage("Iterating #");
+			Logger::WriteMessage(std::to_string(handle.id).c_str());
+			Logger::WriteMessage(" with arg: ");
+			Logger::WriteMessage(std::to_string(*arg).c_str());
+			Logger::WriteMessage("\n");
 		}
 	};
 
@@ -52,7 +58,7 @@ namespace handled
 			Foo::create();
 			Assert::IsTrue(&Foo::handler->page != Foo::handler->page_last);
 			Assert::IsTrue(first_page->page_next == Foo::handler->page_last);
-			Assert::IsTrue(Foo::handler->page_last->index == 1);
+			Assert::AreEqual((size_t)1, Foo::handler->page_last->index);
 			Assert::AreEqual((size_t)(PAGE_SIZE), Foo::handler->page_last->memory[0].handle.id);
 		}
 
@@ -88,6 +94,22 @@ namespace handled
 			Foo::reset_iteration();
 			Foo::iterate(&Foo::with_arg, &num);
 			Assert::AreEqual((PAGE_SIZE + 1) * num, Foo::iteration);
+		}
+
+		TEST_METHOD(Destroy) {
+			Foo::setup();
+			for (int i = 0; i < PAGE_SIZE - 2; ++i) Foo::create();
+			Foo* to_destroy = Foo::create();
+			Foo::create();
+			to_destroy->destroy();
+			Assert::IsTrue(Foo::handler->page.is_full); // page should be full because obj is destroying but not yet removed
+			Foo::reset_iteration();
+			Foo::iterate(&Foo::without_arg);
+			Assert::AreEqual(2, Foo::iteration); // destroyed obj is skipped for iteration
+			Foo::cleanup();
+			Assert::IsFalse(Foo::handler->page.is_full); // page should NOT be full since we just cleaned up destroying obj
+			Foo::create();
+			Assert::IsTrue(Foo::handler->page.is_full); // page should be full once again
 		}
 	};
 }
